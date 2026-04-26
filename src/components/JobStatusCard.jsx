@@ -10,17 +10,21 @@ const STEPS = [
   { id: 'complete', label: 'Complete', icon: CheckCircle2 }
 ];
 
-export default function JobStatusCard({ isActive, onComplete }) {
-  const [currentStep, setCurrentStep] = useState(0);
+export default function JobStatusCard({ currentStep: externalStep, isRealGeneration, onComplete }) {
+  const [internalStep, setInternalStep] = useState(0);
+
+  const currentStep = isRealGeneration ? externalStep : internalStep;
 
   useEffect(() => {
-    if (!isActive) {
-      setCurrentStep(0);
+    if (isRealGeneration) return;
+
+    if (externalStep < 0) {
+      setInternalStep(0);
       return;
     }
 
     const interval = setInterval(() => {
-      setCurrentStep(prev => {
+      setInternalStep(prev => {
         if (prev >= STEPS.length - 1) {
           clearInterval(interval);
           setTimeout(() => onComplete?.(), 500);
@@ -31,9 +35,9 @@ export default function JobStatusCard({ isActive, onComplete }) {
     }, 1500);
 
     return () => clearInterval(interval);
-  }, [isActive, onComplete]);
+  }, [isRealGeneration, externalStep, onComplete]);
 
-  if (!isActive && currentStep === 0) return null;
+  if (currentStep < 0) return null;
 
   return (
     <motion.div
@@ -62,7 +66,7 @@ export default function JobStatusCard({ isActive, onComplete }) {
           marginBottom: '32px',
         }}
       >
-        Generating your tests...
+        {currentStep >= 4 ? 'Tests generated!' : 'Generating your tests...'}
       </h3>
 
       <div style={{ display: 'flex', alignItems: 'flex-start', position: 'relative' }}>
@@ -134,7 +138,7 @@ export default function JobStatusCard({ isActive, onComplete }) {
                     : '2px solid var(--border)',
                 }}
               >
-                {isCurrent && (
+                {isCurrent && currentStep < 4 && (
                   <motion.div
                     style={{
                       position: 'absolute',

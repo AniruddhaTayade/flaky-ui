@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Toaster, toast } from 'sonner';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
@@ -9,6 +9,7 @@ import CodeViewer from './components/CodeViewer';
 import ReportCard from './components/ReportCard';
 import FeaturesSection from './components/FeaturesSection';
 import Footer from './components/Footer';
+import { generateFromUrl, generateFromScreenshot } from './api/generate';
 
 function AppContent() {
   const { isDark } = useTheme();
@@ -18,33 +19,136 @@ function AppContent() {
     showCode: false,
     showReport: false,
     framework: 'playwright',
-    url: 'https://saucedemo.com'
+    url: 'https://saucedemo.com',
+    currentStep: -1,
+    isRealGeneration: false,
+    generatedFiles: null,
+    testCount: null,
+    summary: null,
+    error: null
   });
+
+  const stepTimerRef = useRef(null);
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      setJobState(prev => ({ ...prev, isActive: true }));
+      setJobState(prev => ({ ...prev, isActive: true, currentStep: 0, isRealGeneration: false }));
     }, 2000);
 
     return () => clearTimeout(timer);
   }, []);
 
-  const handleJobStart = ({ url, file, framework }) => {
+  const clearStepTimer = () => {
+    if (stepTimerRef.current) {
+      stepTimerRef.current.forEach(t => clearTimeout(t));
+      stepTimerRef.current = null;
+    }
+  };
+
+  const handleJobStart = async ({ url, file, framework, isManual }) => {
+    clearStepTimer();
+
+    if (!isManual) {
+      setJobState({
+        isActive: true,
+        isComplete: false,
+        showCode: false,
+        showReport: false,
+        framework,
+        url: url || 'https://example.com',
+        currentStep: 0,
+        isRealGeneration: false,
+        generatedFiles: null,
+        testCount: null,
+        summary: null,
+        error: null
+      });
+      toast.info('Starting test generation...', {
+        description: url ? `Analyzing ${url}` : `Analyzing uploaded screenshot`
+      });
+      return;
+    }
+
     setJobState({
       isActive: true,
       isComplete: false,
       showCode: false,
       showReport: false,
       framework,
-      url: url || 'https://example.com'
+      url: url || 'uploaded screenshot',
+      currentStep: 0,
+      isRealGeneration: true,
+      generatedFiles: null,
+      testCount: null,
+      summary: null,
+      error: null
     });
+
     toast.info('Starting test generation...', {
       description: url ? `Analyzing ${url}` : `Analyzing uploaded screenshot`
     });
+
+    stepTimerRef.current = [
+      setTimeout(() => setJobState(prev => ({ ...prev, currentStep: 1 })), 2000),
+      setTimeout(() => setJobState(prev => ({ ...prev, currentStep: 2 })), 4000),
+      setTimeout(() => setJobState(prev => ({ ...prev, currentStep: 3 })), 6000)
+    ];
+
+    try {
+      let result;
+      if (file) {
+        const response = await fetch(file.preview);
+        const blob = await response.blob();
+        const imageFile = new File([blob], file.name, { type: blob.type });
+        result = await generateFromScreenshot(imageFile, framework);
+      } else {
+        result = await generateFromUrl(url, framework);
+      }
+
+      clearStepTimer();
+
+      setJobState(prev => ({
+        ...prev,
+        currentStep: 4,
+        isComplete: true,
+        generatedFiles: result.files,
+        testCount: result.test_count,
+        summary: result.summary
+      }));
+
+      setTimeout(() => {
+        setJobState(prev => ({ ...prev, showCode: true }));
+      }, 500);
+
+      setTimeout(() => {
+        setJobState(prev => ({ ...prev, showReport: true }));
+      }, 1500);
+
+      toast.success('Tests generated successfully!', {
+        description: result.summary
+      });
+
+    } catch (error) {
+      clearStepTimer();
+
+      setJobState(prev => ({
+        ...prev,
+        isActive: false,
+        isComplete: false,
+        currentStep: -1,
+        error: error.message
+      }));
+
+      toast.error('Generation failed', {
+        description: error.message
+      });
+    }
   };
 
   const handleJobComplete = () => {
-    setJobState(prev => ({ ...prev, isComplete: true }));
+    if (jobState.isRealGeneration) return;
+
+    setJobState(prev => ({ ...prev, isComplete: true, currentStep: 4 }));
 
     setTimeout(() => {
       setJobState(prev => ({ ...prev, showCode: true }));
@@ -56,12 +160,19 @@ function AppContent() {
   };
 
   const handleRunAgain = () => {
+    clearStepTimer();
     setJobState(prev => ({
       ...prev,
       isActive: true,
       isComplete: false,
       showCode: false,
       showReport: false,
+      currentStep: 0,
+      isRealGeneration: false,
+      generatedFiles: null,
+      testCount: null,
+      summary: null,
+      error: null
     }));
     toast.info('Re-running test generation...');
   };
@@ -104,7 +215,8 @@ function AppContent() {
               }}
             >
               <JobStatusCard
-                isActive={jobState.isActive}
+                currentStep={jobState.currentStep}
+                isRealGeneration={jobState.isRealGeneration}
                 onComplete={handleJobComplete}
               />
 
@@ -112,11 +224,14 @@ function AppContent() {
                 framework={jobState.framework}
                 url={jobState.url}
                 isVisible={jobState.showCode}
+                files={jobState.generatedFiles}
               />
 
               <ReportCard
                 isVisible={jobState.showReport}
                 onRunAgain={handleRunAgain}
+                testCount={jobState.testCount}
+                summary={jobState.summary}
               />
             </motion.section>
           )}

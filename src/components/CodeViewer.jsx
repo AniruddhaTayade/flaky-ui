@@ -208,22 +208,32 @@ class Test${className}Login:
         expect(self.login_page.login_button).to_be_visible()`;
 }
 
-export default function CodeViewer({ framework = 'playwright', url = '', isVisible }) {
+export default function CodeViewer({ framework = 'playwright', url = '', isVisible, files }) {
   const { isDark } = useTheme();
   const [highlightedCode, setHighlightedCode] = useState('');
   const [copied, setCopied] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState(0);
+
+  const hasRealFiles = files && files.length > 0;
 
   const { domain, className, fullUrl } = useMemo(() => extractDomainInfo(url), [url]);
 
-  const code = useMemo(() => {
+  const mockCode = useMemo(() => {
     return framework === 'selenium'
       ? generateSeleniumCode(domain, className, fullUrl)
       : generatePlaywrightCode(domain, className, fullUrl);
   }, [framework, domain, className, fullUrl]);
 
-  const filename = 'test_generated.py';
+  const currentFile = hasRealFiles ? files[activeTab] : null;
+  const code = hasRealFiles ? currentFile.content : mockCode;
+  const filename = hasRealFiles ? currentFile.filename : 'test_generated.py';
+
   const shikiTheme = isDark ? 'github-dark' : 'github-light';
+
+  useEffect(() => {
+    setActiveTab(0);
+  }, [files]);
 
   useEffect(() => {
     if (!isVisible) return;
@@ -258,9 +268,24 @@ export default function CodeViewer({ framework = 'playwright', url = '', isVisib
     const downloadUrl = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = downloadUrl;
-    a.download = filename;
+    a.download = filename.split('/').pop();
     a.click();
     window.URL.revokeObjectURL(downloadUrl);
+  };
+
+  const handleDownloadAll = () => {
+    if (!hasRealFiles) return;
+    files.forEach((file, index) => {
+      setTimeout(() => {
+        const blob = new Blob([file.content], { type: 'text/plain' });
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.download = file.filename.split('/').pop();
+        a.click();
+        window.URL.revokeObjectURL(downloadUrl);
+      }, index * 200);
+    });
   };
 
   if (!isVisible) return null;
@@ -285,62 +310,101 @@ export default function CodeViewer({ framework = 'playwright', url = '', isVisib
       <div
         style={{
           background: 'var(--code-bar-bg)',
-          height: '48px',
           padding: '0 16px',
           display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
+          flexDirection: 'column',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{ display: 'flex', gap: '6px' }}>
-            <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#ff5f57' }} />
-            <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#febc2e' }} />
-            <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#28c840' }} />
+        {hasRealFiles && files.length > 1 && (
+          <div
+            style={{
+              display: 'flex',
+              gap: '2px',
+              paddingTop: '8px',
+              borderBottom: '1px solid var(--border)',
+              marginBottom: '-1px',
+            }}
+          >
+            {files.map((file, index) => (
+              <button
+                key={index}
+                onClick={() => setActiveTab(index)}
+                style={{
+                  padding: '8px 16px',
+                  fontSize: '13px',
+                  color: activeTab === index ? 'var(--text)' : 'var(--text-muted)',
+                  background: activeTab === index ? 'var(--code-area-bg)' : 'transparent',
+                  border: 'none',
+                  borderRadius: '8px 8px 0 0',
+                  cursor: 'pointer',
+                  borderBottom: activeTab === index ? '2px solid #7c3aed' : '2px solid transparent',
+                  transition: 'all 0.2s',
+                }}
+              >
+                {file.filename.split('/').pop()}
+              </button>
+            ))}
           </div>
-          <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>{filename}</span>
-        </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <motion.button
-            onClick={handleCopy}
-            style={{
-              height: '32px',
-              padding: '0 12px',
-              borderRadius: '6px',
-              border: '1px solid var(--border)',
-              background: 'transparent',
-              color: copied ? '#10b981' : 'var(--text-muted)',
-              fontSize: '13px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-            }}
-            whileHover={{ opacity: 0.8 }}
-          >
-            {copied ? <Check style={{ width: '14px', height: '14px' }} /> : <Copy style={{ width: '14px', height: '14px' }} />}
-            {copied ? 'Copied!' : 'Copy'}
-          </motion.button>
-          <motion.button
-            onClick={handleDownload}
-            style={{
-              height: '32px',
-              padding: '0 12px',
-              borderRadius: '6px',
-              border: '1px solid var(--border)',
-              background: 'transparent',
-              color: 'var(--text-muted)',
-              fontSize: '13px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-            }}
-            whileHover={{ opacity: 0.8 }}
-          >
-            <Download style={{ width: '14px', height: '14px' }} />
-            Download
-          </motion.button>
+        )}
+
+        <div
+          style={{
+            height: '48px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#ff5f57' }} />
+              <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#febc2e' }} />
+              <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#28c840' }} />
+            </div>
+            <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>{filename}</span>
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <motion.button
+              onClick={handleCopy}
+              style={{
+                height: '32px',
+                padding: '0 12px',
+                borderRadius: '6px',
+                border: '1px solid var(--border)',
+                background: 'transparent',
+                color: copied ? '#10b981' : 'var(--text-muted)',
+                fontSize: '13px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+              whileHover={{ opacity: 0.8 }}
+            >
+              {copied ? <Check style={{ width: '14px', height: '14px' }} /> : <Copy style={{ width: '14px', height: '14px' }} />}
+              {copied ? 'Copied!' : 'Copy'}
+            </motion.button>
+            <motion.button
+              onClick={hasRealFiles && files.length > 1 ? handleDownloadAll : handleDownload}
+              style={{
+                height: '32px',
+                padding: '0 12px',
+                borderRadius: '6px',
+                border: '1px solid var(--border)',
+                background: 'transparent',
+                color: 'var(--text-muted)',
+                fontSize: '13px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+              whileHover={{ opacity: 0.8 }}
+            >
+              <Download style={{ width: '14px', height: '14px' }} />
+              {hasRealFiles && files.length > 1 ? 'Download All' : 'Download'}
+            </motion.button>
+          </div>
         </div>
       </div>
 

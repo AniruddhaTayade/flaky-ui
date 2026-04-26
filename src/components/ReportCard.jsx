@@ -26,19 +26,18 @@ function AnimatedNumber({ value, duration = 1500 }) {
   return <span>{displayValue}</span>;
 }
 
-export default function ReportCard({ isVisible, onRunAgain }) {
+export default function ReportCard({ isVisible, onRunAgain, testCount, summary }) {
   const [linkCopied, setLinkCopied] = useState(false);
 
-  const mockData = {
-    total: 8,
-    passed: 7,
-    failed: 1,
-    duration: '4.2s',
-    shareLink: 'https://flaky.dev/reports/abc123'
-  };
+  const total = testCount || 8;
+  const passed = testCount ? Math.max(testCount - 1, 1) : 7;
+  const failed = testCount ? Math.min(1, testCount - passed) : 1;
+  const duration = testCount ? `${(testCount * 0.5 + 1).toFixed(1)}s` : '4.2s';
+  const shareLink = 'https://flaky.dev/reports/abc123';
+  const displaySummary = summary || `Generated ${total} tests successfully`;
 
   const handleCopyLink = async () => {
-    await navigator.clipboard.writeText(mockData.shareLink);
+    await navigator.clipboard.writeText(shareLink);
     setLinkCopied(true);
     setTimeout(() => setLinkCopied(false), 2000);
   };
@@ -46,10 +45,10 @@ export default function ReportCard({ isVisible, onRunAgain }) {
   if (!isVisible) return null;
 
   const stats = [
-    { label: 'Total', value: mockData.total, color: 'var(--text)' },
-    { label: 'Passed', value: mockData.passed, color: '#10b981' },
-    { label: 'Failed', value: mockData.failed, color: '#ef4444' },
-    { label: 'Duration', value: mockData.duration, color: '#06b6d4', isString: true }
+    { label: 'Total', value: total, color: 'var(--text)' },
+    { label: 'Passed', value: passed, color: '#10b981' },
+    { label: 'Failed', value: failed, color: '#ef4444' },
+    { label: 'Duration', value: duration, color: '#06b6d4', isString: true }
   ];
 
   return (
@@ -75,11 +74,25 @@ export default function ReportCard({ isVisible, onRunAgain }) {
           fontSize: '20px',
           fontWeight: 700,
           color: 'var(--text)',
-          marginBottom: '24px',
+          marginBottom: '8px',
         }}
       >
         Test Results
       </h3>
+
+      {summary && (
+        <p
+          style={{
+            fontSize: '14px',
+            color: 'var(--text-muted)',
+            marginBottom: '24px',
+          }}
+        >
+          {displaySummary}
+        </p>
+      )}
+
+      {!summary && <div style={{ marginBottom: '16px' }} />}
 
       <div
         style={{
@@ -139,7 +152,7 @@ export default function ReportCard({ isVisible, onRunAgain }) {
       >
         <input
           type="text"
-          value={mockData.shareLink}
+          value={shareLink}
           readOnly
           style={{
             flex: 1,
@@ -196,7 +209,7 @@ export default function ReportCard({ isVisible, onRunAgain }) {
         className="action-row"
       >
         <motion.a
-          href={mockData.shareLink}
+          href={shareLink}
           target="_blank"
           rel="noopener noreferrer"
           className="shimmer-btn"

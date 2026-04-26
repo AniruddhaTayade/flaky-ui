@@ -84,6 +84,8 @@ export default function HeroSection({ onJobStart }) {
   const [framework, setFramework] = useState('playwright');
   const [uploadedFile, setUploadedFile] = useState(null);
   const [isUrlFocused, setIsUrlFocused] = useState(false);
+  const [urlError, setUrlError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     initParticlesEngine(async (engine) => {
@@ -98,25 +100,44 @@ export default function HeroSection({ onJobStart }) {
       const file = acceptedFiles[0];
       const reader = new FileReader();
       reader.onload = () => {
-        setUploadedFile({
+        const newFile = {
           name: file.name,
           preview: reader.result
-        });
+        };
+        setUploadedFile(newFile);
+        setUrlError('');
+        setIsLoading(true);
+        onJobStart({ url: null, file: newFile, framework, isManual: true });
+        setTimeout(() => setIsLoading(false), 1000);
       };
       reader.readAsDataURL(file);
     }
-  }, []);
+  }, [framework, onJobStart]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: { 'image/*': ['.png', '.jpg', '.jpeg', '.webp'] },
-    maxFiles: 1
+    maxFiles: 1,
+    disabled: isLoading
   });
 
   const handleGenerate = () => {
-    if (url || uploadedFile) {
-      onJobStart({ url, file: uploadedFile, framework });
+    if (isLoading) return;
+
+    if (!url && !uploadedFile) {
+      setUrlError('Please enter a URL');
+      return;
     }
+
+    setUrlError('');
+    setIsLoading(true);
+    onJobStart({ url, file: uploadedFile, framework, isManual: true });
+    setTimeout(() => setIsLoading(false), 1000);
+  };
+
+  const handleUrlChange = (e) => {
+    setUrl(e.target.value);
+    if (urlError) setUrlError('');
   };
 
   return (
@@ -221,26 +242,46 @@ export default function HeroSection({ onJobStart }) {
             <input
               type="url"
               value={url}
-              onChange={(e) => setUrl(e.target.value)}
+              onChange={handleUrlChange}
               onFocus={() => setIsUrlFocused(true)}
               onBlur={() => setIsUrlFocused(false)}
               placeholder="https://example.com"
+              disabled={isLoading}
               style={{
                 width: '100%',
                 background: 'var(--input-bg)',
-                border: `1px solid ${isUrlFocused ? '#7c3aed' : 'var(--border)'}`,
+                border: `1px solid ${urlError ? '#ef4444' : isUrlFocused ? '#7c3aed' : 'var(--border)'}`,
                 borderRadius: '10px',
                 padding: '12px 16px',
                 color: 'var(--text)',
                 fontSize: '15px',
                 outline: 'none',
-                boxShadow: isUrlFocused ? '0 0 0 3px rgba(124, 58, 237, 0.15)' : 'none',
+                boxShadow: urlError
+                  ? '0 0 0 3px rgba(239, 68, 68, 0.15)'
+                  : isUrlFocused
+                  ? '0 0 0 3px rgba(124, 58, 237, 0.15)'
+                  : 'none',
                 transition: 'border-color 0.2s, box-shadow 0.2s',
+                opacity: isLoading ? 0.6 : 1,
               }}
             />
+            {urlError && (
+              <motion.p
+                initial={{ opacity: 0, y: -5 }}
+                animate={{ opacity: 1, y: 0 }}
+                style={{
+                  fontSize: '13px',
+                  color: '#ef4444',
+                  marginTop: '8px',
+                  marginBottom: 0,
+                }}
+              >
+                {urlError}
+              </motion.p>
+            )}
             <motion.button
               onClick={handleGenerate}
-              disabled={!url && !uploadedFile}
+              disabled={isLoading}
               className="shimmer-btn"
               style={{
                 width: '100%',
@@ -252,13 +293,34 @@ export default function HeroSection({ onJobStart }) {
                 color: 'white',
                 fontSize: '15px',
                 fontWeight: 600,
-                cursor: url || uploadedFile ? 'pointer' : 'not-allowed',
-                opacity: url || uploadedFile ? 1 : 0.5,
+                cursor: isLoading ? 'not-allowed' : 'pointer',
+                opacity: isLoading ? 0.7 : 1,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
               }}
-              whileHover={url || uploadedFile ? { opacity: 0.9, scale: 1.01 } : {}}
-              whileTap={url || uploadedFile ? { scale: 0.99 } : {}}
+              whileHover={!isLoading ? { opacity: 0.9, scale: 1.01 } : {}}
+              whileTap={!isLoading ? { scale: 0.99 } : {}}
             >
-              Generate Tests
+              {isLoading ? (
+                <>
+                  <motion.div
+                    style={{
+                      width: '18px',
+                      height: '18px',
+                      border: '2px solid rgba(255,255,255,0.3)',
+                      borderTopColor: 'white',
+                      borderRadius: '50%',
+                    }}
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                  />
+                  Generating...
+                </>
+              ) : (
+                'Generate Tests'
+              )}
             </motion.button>
           </div>
 
@@ -271,6 +333,7 @@ export default function HeroSection({ onJobStart }) {
               display: 'flex',
               flexDirection: 'column',
               boxShadow: 'var(--card-shadow)',
+              opacity: isLoading ? 0.6 : 1,
             }}
           >
             <label
@@ -296,7 +359,7 @@ export default function HeroSection({ onJobStart }) {
                 justifyContent: 'center',
                 flexDirection: 'column',
                 gap: '8px',
-                cursor: 'pointer',
+                cursor: isLoading ? 'not-allowed' : 'pointer',
                 background: isDragActive ? 'rgba(124, 58, 237, 0.05)' : 'transparent',
                 transition: 'border-color 0.2s, background 0.2s',
               }}
@@ -331,6 +394,7 @@ export default function HeroSection({ onJobStart }) {
                           e.stopPropagation();
                           setUploadedFile(null);
                         }}
+                        disabled={isLoading}
                         style={{
                           position: 'absolute',
                           top: '-8px',
@@ -343,7 +407,7 @@ export default function HeroSection({ onJobStart }) {
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          cursor: 'pointer',
+                          cursor: isLoading ? 'not-allowed' : 'pointer',
                         }}
                       >
                         <X style={{ width: '12px', height: '12px', color: 'white' }} />
@@ -403,6 +467,7 @@ export default function HeroSection({ onJobStart }) {
               <button
                 key={option}
                 onClick={() => setFramework(option)}
+                disabled={isLoading}
                 style={{
                   position: 'relative',
                   zIndex: 1,
@@ -413,7 +478,7 @@ export default function HeroSection({ onJobStart }) {
                   border: 'none',
                   background: 'transparent',
                   color: framework === option ? 'white' : 'var(--text-muted)',
-                  cursor: 'pointer',
+                  cursor: isLoading ? 'not-allowed' : 'pointer',
                 }}
               >
                 {framework === option && (
