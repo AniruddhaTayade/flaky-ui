@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Toaster, toast } from 'sonner';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
@@ -9,7 +9,7 @@ import CodeViewer from './components/CodeViewer';
 import ReportCard from './components/ReportCard';
 import FeaturesSection from './components/FeaturesSection';
 import Footer from './components/Footer';
-import { generateFromUrl, generateFromScreenshot } from './api/generate';
+import { generateFromUrl, generateFromScreenshot, generateWithJobQueue } from './api/generate';
 
 function AppContent() {
   const { isDark } = useTheme();
@@ -19,24 +19,18 @@ function AppContent() {
     showCode: false,
     showReport: false,
     framework: 'playwright',
-    url: 'https://saucedemo.com',
+    url: '',
     currentStep: -1,
     isRealGeneration: false,
+    isScreenshotMode: false,
     generatedFiles: null,
     testCount: null,
     summary: null,
-    error: null
+    error: null,
+    jobId: null
   });
 
   const stepTimerRef = useRef(null);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setJobState(prev => ({ ...prev, isActive: true, currentStep: 0, isRealGeneration: false }));
-    }, 2000);
-
-    return () => clearTimeout(timer);
-  }, []);
 
   const clearStepTimer = () => {
     if (stepTimerRef.current) {
@@ -46,6 +40,7 @@ function AppContent() {
   };
 
   const handleJobStart = async ({ url, file, framework, isManual }) => {
+    console.log('[DEBUG] onJobStart called with:', { url, file, framework, isManual });
     clearStepTimer();
 
     if (!isManual) {
@@ -58,10 +53,12 @@ function AppContent() {
         url: url || 'https://example.com',
         currentStep: 0,
         isRealGeneration: false,
+        isScreenshotMode: !!file,
         generatedFiles: null,
         testCount: null,
         summary: null,
-        error: null
+        error: null,
+        jobId: Date.now().toString()
       });
       toast.info('Starting test generation...', {
         description: url ? `Analyzing ${url}` : `Analyzing uploaded screenshot`
@@ -69,6 +66,7 @@ function AppContent() {
       return;
     }
 
+    const newJobId = Date.now().toString();
     setJobState({
       isActive: true,
       isComplete: false,
@@ -78,10 +76,12 @@ function AppContent() {
       url: url || 'uploaded screenshot',
       currentStep: 0,
       isRealGeneration: true,
+      isScreenshotMode: !!file,
       generatedFiles: null,
       testCount: null,
       summary: null,
-      error: null
+      error: null,
+      jobId: newJobId
     });
 
     toast.info('Starting test generation...', {
@@ -89,39 +89,92 @@ function AppContent() {
     });
 
     stepTimerRef.current = [
-      setTimeout(() => setJobState(prev => ({ ...prev, currentStep: 1 })), 2000),
-      setTimeout(() => setJobState(prev => ({ ...prev, currentStep: 2 })), 4000),
-      setTimeout(() => setJobState(prev => ({ ...prev, currentStep: 3 })), 6000)
+      setTimeout(() => setJobState(prev => {
+        if (prev.isComplete || prev.currentStep >= 4) return prev;
+        return { ...prev, currentStep: 1 };
+      }), 2000),
+      setTimeout(() => setJobState(prev => {
+        if (prev.isComplete || prev.currentStep >= 4) return prev;
+        return { ...prev, currentStep: 2 };
+      }), 4000),
+      setTimeout(() => setJobState(prev => {
+        if (prev.isComplete || prev.currentStep >= 4) return prev;
+        return { ...prev, currentStep: 3 };
+      }), 6000)
     ];
 
     try {
       let result;
+      const stepMap = {
+        pending: -1,
+        scraping: 0,
+        analyzing: 1,
+        generating: 2,
+        executing: 3,
+        complete: 4
+      };
+
+      const statusCallback = (statusUpdate) => {
+        const step = stepMap[statusUpdate.status] ?? -1;
+        setJobState(prev => {
+          if (prev.isComplete) return prev;
+          if (step < prev.currentStep) return prev;
+          return { ...prev, currentStep: step };
+        });
+      };
+
       if (file) {
-        const response = await fetch(file.preview);
-        const blob = await response.blob();
-        const imageFile = new File([blob], file.name, { type: blob.type });
-        result = await generateFromScreenshot(imageFile, framework);
+        // Use job queue for screenshots too
+        console.log('[DEBUG] Processing file for upload:', file);
+        let imageFile;
+        if (file.rawFile) {
+          console.log('[DEBUG] Using rawFile directly:', file.rawFile);
+          imageFile = file.rawFile;
+        } else {
+          console.log('[DEBUG] Fetching from preview URL:', file.preview);
+          const response = await fetch(file.preview);
+          const blob = await response.blob();
+          imageFile = new File([blob], file.name, { type: blob.type });
+        }
+        console.log('[DEBUG] Calling generateWithJobQueue with screenshot:', imageFile.name, imageFile.type, imageFile.size);
+        console.log('[DEBUG] imageFile being passed:', imageFile);
+        console.log('[DEBUG] imageFile instanceof File:', imageFile instanceof File);
+        result = await generateWithJobQueue(null, framework, statusCallback, imageFile);
       } else {
-        result = await generateFromUrl(url, framework);
+        console.log('[DEBUG] Calling generateWithJobQueue with URL:', url);
+        result = await generateWithJobQueue(url, framework, statusCallback);
       }
 
       clearStepTimer();
 
-      setJobState(prev => ({
-        ...prev,
-        currentStep: 4,
-        isComplete: true,
-        generatedFiles: result.files,
-        testCount: result.test_count,
-        summary: result.summary
-      }));
+      console.log('[DEBUG] Job complete, result object:', result);
+      console.log('[DEBUG] result.files:', result?.files);
+      console.log('[DEBUG] result.files length:', result?.files?.length);
+
+      setJobState(prev => {
+        console.log('[DEBUG] setJobState called, setting generatedFiles to:', result.files);
+        return {
+          ...prev,
+          currentStep: 4,
+          isComplete: true,
+          generatedFiles: result.files,
+          testCount: result.test_count,
+          summary: result.summary
+        };
+      });
 
       setTimeout(() => {
-        setJobState(prev => ({ ...prev, showCode: true }));
+        setJobState(prev => {
+          if (!prev.isComplete) return prev;
+          return { ...prev, showCode: true };
+        });
       }, 500);
 
       setTimeout(() => {
-        setJobState(prev => ({ ...prev, showReport: true }));
+        setJobState(prev => {
+          if (!prev.isComplete) return prev;
+          return { ...prev, showReport: true };
+        });
       }, 1500);
 
       toast.success('Tests generated successfully!', {
@@ -145,19 +198,21 @@ function AppContent() {
     }
   };
 
-  const handleJobComplete = () => {
-    if (jobState.isRealGeneration) return;
+  const handleJobComplete = useCallback(() => {
+    setJobState(prev => {
+      if (prev.isRealGeneration || prev.isComplete) return prev;
 
-    setJobState(prev => ({ ...prev, isComplete: true, currentStep: 4 }));
+      setTimeout(() => {
+        setJobState(p => ({ ...p, showCode: true }));
+      }, 500);
 
-    setTimeout(() => {
-      setJobState(prev => ({ ...prev, showCode: true }));
-    }, 500);
+      setTimeout(() => {
+        setJobState(p => ({ ...p, showReport: true }));
+      }, 1500);
 
-    setTimeout(() => {
-      setJobState(prev => ({ ...prev, showReport: true }));
-    }, 1500);
-  };
+      return { ...prev, isComplete: true, currentStep: 4 };
+    });
+  }, []);
 
   const handleRunAgain = () => {
     clearStepTimer();
@@ -172,7 +227,8 @@ function AppContent() {
       generatedFiles: null,
       testCount: null,
       summary: null,
-      error: null
+      error: null,
+      jobId: Date.now().toString()
     }));
     toast.info('Re-running test generation...');
   };
@@ -217,10 +273,13 @@ function AppContent() {
               <JobStatusCard
                 currentStep={jobState.currentStep}
                 isRealGeneration={jobState.isRealGeneration}
+                isComplete={jobState.isComplete}
+                isScreenshotMode={jobState.isScreenshotMode}
                 onComplete={handleJobComplete}
               />
 
               <CodeViewer
+                key={jobState.jobId || 'demo'}
                 framework={jobState.framework}
                 url={jobState.url}
                 isVisible={jobState.showCode}

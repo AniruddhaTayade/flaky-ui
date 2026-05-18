@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Globe, Brain, FileCode, Play, CheckCircle2, Check } from 'lucide-react';
+import { Globe, Brain, FileCode, Play, CheckCircle2, Check, Image, Cpu } from 'lucide-react';
 
-const STEPS = [
+const URL_STEPS = [
   { id: 'scraping', label: 'Scraping', icon: Globe },
   { id: 'analyzing', label: 'Analyzing', icon: Brain },
   { id: 'generating', label: 'Generating', icon: FileCode },
@@ -10,16 +10,38 @@ const STEPS = [
   { id: 'complete', label: 'Complete', icon: CheckCircle2 }
 ];
 
-export default function JobStatusCard({ currentStep: externalStep, isRealGeneration, onComplete }) {
+const SCREENSHOT_STEPS = [
+  { id: 'analyzing', label: 'Analyzing', icon: Image },
+  { id: 'processing', label: 'Processing', icon: Cpu },
+  { id: 'generating', label: 'Generating', icon: FileCode },
+  { id: 'validating', label: 'Validating', icon: Brain },
+  { id: 'complete', label: 'Complete', icon: CheckCircle2 }
+];
+
+export default function JobStatusCard({ currentStep: externalStep, isRealGeneration, isComplete, onComplete, isScreenshotMode = false }) {
+  const STEPS = isScreenshotMode ? SCREENSHOT_STEPS : URL_STEPS;
   const [internalStep, setInternalStep] = useState(0);
+  const onCompleteRef = useRef(onComplete);
+  const hasCalledCompleteRef = useRef(false);
+
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
+
+  useEffect(() => {
+    if (isComplete) {
+      hasCalledCompleteRef.current = true;
+    }
+  }, [isComplete]);
 
   const currentStep = isRealGeneration ? externalStep : internalStep;
 
   useEffect(() => {
-    if (isRealGeneration) return;
+    if (isRealGeneration || isComplete) return;
 
     if (externalStep < 0) {
       setInternalStep(0);
+      hasCalledCompleteRef.current = false;
       return;
     }
 
@@ -27,7 +49,10 @@ export default function JobStatusCard({ currentStep: externalStep, isRealGenerat
       setInternalStep(prev => {
         if (prev >= STEPS.length - 1) {
           clearInterval(interval);
-          setTimeout(() => onComplete?.(), 500);
+          if (!hasCalledCompleteRef.current) {
+            hasCalledCompleteRef.current = true;
+            setTimeout(() => onCompleteRef.current?.(), 500);
+          }
           return prev;
         }
         return prev + 1;
@@ -35,7 +60,7 @@ export default function JobStatusCard({ currentStep: externalStep, isRealGenerat
     }, 1500);
 
     return () => clearInterval(interval);
-  }, [isRealGeneration, externalStep, onComplete]);
+  }, [isRealGeneration, isComplete, externalStep]);
 
   if (currentStep < 0) return null;
 

@@ -85,6 +85,7 @@ export default function HeroSection({ onJobStart }) {
   const [uploadedFile, setUploadedFile] = useState(null);
   const [isUrlFocused, setIsUrlFocused] = useState(false);
   const [urlError, setUrlError] = useState('');
+  const [fileError, setFileError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
@@ -95,43 +96,93 @@ export default function HeroSection({ onJobStart }) {
     });
   }, []);
 
-  const onDrop = useCallback((acceptedFiles) => {
-    if (acceptedFiles.length > 0) {
-      const file = acceptedFiles[0];
-      const reader = new FileReader();
-      reader.onload = () => {
-        const newFile = {
-          name: file.name,
-          preview: reader.result
-        };
-        setUploadedFile(newFile);
-        setUrlError('');
-        setIsLoading(true);
-        onJobStart({ url: null, file: newFile, framework, isManual: true });
-        setTimeout(() => setIsLoading(false), 1000);
-      };
-      reader.readAsDataURL(file);
-    }
-  }, [framework, onJobStart]);
+  const onDrop = useCallback((acceptedFiles, rejectedFiles) => {
+    console.log('[DEBUG] onDrop called, accepted:', acceptedFiles, 'rejected:', rejectedFiles);
+    setFileError('');
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: { 'image/*': ['.png', '.jpg', '.jpeg', '.webp'] },
-    maxFiles: 1,
-    disabled: isLoading
-  });
-
-  const handleGenerate = () => {
-    if (isLoading) return;
-
-    if (!url && !uploadedFile) {
-      setUrlError('Please enter a URL');
+    if (rejectedFiles?.length > 0) {
+      console.log('[DEBUG] Files rejected:', rejectedFiles);
+      const reason = rejectedFiles[0]?.errors?.[0]?.message || 'Invalid file type';
+      setFileError(`Upload failed: ${reason}. Please use PNG, JPG, or JPEG.`);
       return;
     }
 
+    if (acceptedFiles.length > 0) {
+      const file = acceptedFiles[0];
+      console.log('[DEBUG] File object before processing:', file);
+      console.log('[DEBUG] File details - name:', file.name, 'type:', file.type, 'size:', file.size);
+
+      // Validate file object
+      if (!file || !file.name || !file.type) {
+        console.error('[DEBUG] Invalid file object:', file);
+        setFileError('Invalid file object received');
+        return;
+      }
+
+      // Store the raw File object and create preview URL
+      const previewUrl = URL.createObjectURL(file);
+      console.log('[DEBUG] Created preview URL:', previewUrl);
+
+      const newFile = {
+        name: file.name,
+        preview: previewUrl,
+        type: file.type,
+        size: file.size,
+        rawFile: file  // Store raw File object for API upload
+      };
+
+      console.log('[DEBUG] Setting uploadedFile state with:', newFile);
+      setUploadedFile(newFile);
+      setUrl(''); // Clear URL when file is uploaded
+    }
+  }, []);
+
+  const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
+    onDrop,
+    accept: {
+      'image/png': ['.png'],
+      'image/jpeg': ['.jpg', '.jpeg'],
+      'image/webp': ['.webp']
+    },
+    maxFiles: 1,
+    disabled: isLoading,
+    noClick: false,
+    noKeyboard: false
+  });
+
+  const URL_PLACEHOLDER = 'https://example.com';
+  const trimmedUrl = url.trim();
+  const hasUrl = trimmedUrl.length > 0 && trimmedUrl !== URL_PLACEHOLDER;
+  const hasFile = !!uploadedFile;
+  const hasBoth = hasUrl && hasFile;
+  const hasNeither = !hasUrl && !hasFile;
+
+  const getButtonState = () => {
+    if (hasBoth) return { disabled: true, message: 'Please use either a URL or a screenshot, not both' };
+    if (hasNeither) return { disabled: true, message: null };
+    return { disabled: false, message: null };
+  };
+
+  const buttonState = getButtonState();
+
+  const handleGenerate = () => {
+    if (isLoading || buttonState.disabled) return;
+
+    console.log('[DEBUG] handleGenerate called, url:', url, 'uploadedFile:', uploadedFile);
+
     setUrlError('');
+    setFileError('');
     setIsLoading(true);
-    onJobStart({ url, file: uploadedFile, framework, isManual: true });
+
+    if (hasFile) {
+      console.log('[DEBUG] Starting job with screenshot:', uploadedFile.name);
+      console.log('[DEBUG] Raw file object:', uploadedFile.rawFile);
+      onJobStart({ url: null, file: uploadedFile, framework, isManual: true });
+    } else {
+      console.log('[DEBUG] Starting job with URL:', url);
+      onJobStart({ url, file: null, framework, isManual: true });
+    }
+
     setTimeout(() => setIsLoading(false), 1000);
   };
 
@@ -210,18 +261,19 @@ export default function HeroSection({ onJobStart }) {
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 1.1, duration: 0.5 }}
           style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(2, 1fr)',
-            gap: '16px',
-            alignItems: 'stretch',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0',
+            maxWidth: '500px',
+            margin: '0 auto',
           }}
-          className="input-grid"
         >
+          {/* URL Input Section */}
           <div
             style={{
               background: 'var(--card-bg)',
               border: '1px solid var(--border)',
-              borderRadius: '16px',
+              borderRadius: '16px 16px 0 0',
               padding: '24px',
               display: 'flex',
               flexDirection: 'column',
@@ -245,7 +297,7 @@ export default function HeroSection({ onJobStart }) {
               onChange={handleUrlChange}
               onFocus={() => setIsUrlFocused(true)}
               onBlur={() => setIsUrlFocused(false)}
-              placeholder="https://example.com"
+              placeholder={URL_PLACEHOLDER}
               disabled={isLoading}
               style={{
                 width: '100%',
@@ -279,79 +331,72 @@ export default function HeroSection({ onJobStart }) {
                 {urlError}
               </motion.p>
             )}
-            <motion.button
-              onClick={handleGenerate}
-              disabled={isLoading}
-              className="shimmer-btn"
-              style={{
-                width: '100%',
-                height: '48px',
-                marginTop: '12px',
-                background: 'linear-gradient(135deg, #7c3aed, #06b6d4)',
-                border: 'none',
-                borderRadius: '10px',
-                color: 'white',
-                fontSize: '15px',
-                fontWeight: 600,
-                cursor: isLoading ? 'not-allowed' : 'pointer',
-                opacity: isLoading ? 0.7 : 1,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '8px',
-              }}
-              whileHover={!isLoading ? { opacity: 0.9, scale: 1.01 } : {}}
-              whileTap={!isLoading ? { scale: 0.99 } : {}}
-            >
-              {isLoading ? (
-                <>
-                  <motion.div
-                    style={{
-                      width: '18px',
-                      height: '18px',
-                      border: '2px solid rgba(255,255,255,0.3)',
-                      borderTopColor: 'white',
-                      borderRadius: '50%',
-                    }}
-                    animate={{ rotate: 360 }}
-                    transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-                  />
-                  Generating...
-                </>
-              ) : (
-                'Generate Tests'
-              )}
-            </motion.button>
           </div>
 
+          {/* OR Divider */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '16px',
+              padding: '16px 24px',
+              background: 'var(--card-bg)',
+              borderLeft: '1px solid var(--border)',
+              borderRight: '1px solid var(--border)',
+            }}
+          >
+            <div style={{ flex: 1, height: '1px', background: 'var(--border)' }} />
+            <span
+              style={{
+                fontSize: '12px',
+                fontWeight: 600,
+                color: 'var(--text-muted)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.1em',
+              }}
+            >
+              OR
+            </span>
+            <div style={{ flex: 1, height: '1px', background: 'var(--border)' }} />
+          </div>
+
+          {/* Helper Text */}
+          <div
+            style={{
+              padding: '0 24px 16px',
+              background: 'var(--card-bg)',
+              borderLeft: '1px solid var(--border)',
+              borderRight: '1px solid var(--border)',
+            }}
+          >
+            <p
+              style={{
+                fontSize: '13px',
+                color: 'var(--text-muted)',
+                margin: 0,
+                textAlign: 'center',
+              }}
+            >
+              Don't have a link? A screenshot is enough.
+            </p>
+          </div>
+
+          {/* Screenshot Dropzone Section */}
           <div
             style={{
               background: 'var(--card-bg)',
-              border: '1px solid var(--border)',
-              borderRadius: '16px',
-              padding: '24px',
+              borderLeft: '1px solid var(--border)',
+              borderRight: '1px solid var(--border)',
+              padding: '0 24px 24px',
               display: 'flex',
               flexDirection: 'column',
-              boxShadow: 'var(--card-shadow)',
               opacity: isLoading ? 0.6 : 1,
             }}
           >
-            <label
-              style={{
-                fontSize: '12px',
-                textTransform: 'uppercase',
-                letterSpacing: '0.1em',
-                color: 'var(--text-muted)',
-                marginBottom: '12px',
-              }}
-            >
-              Upload Screenshot
-            </label>
             <div
               {...getRootProps()}
               style={{
-                flex: 1,
-                minHeight: '140px',
+                minHeight: '120px',
                 border: `2px dashed ${isDragActive ? '#7c3aed' : 'var(--border-medium)'}`,
                 borderRadius: '10px',
                 display: 'flex',
@@ -377,6 +422,7 @@ export default function HeroSection({ onJobStart }) {
                       flexDirection: 'column',
                       alignItems: 'center',
                       gap: '8px',
+                      padding: '8px',
                     }}
                   >
                     <div style={{ position: 'relative' }}>
@@ -384,15 +430,21 @@ export default function HeroSection({ onJobStart }) {
                         src={uploadedFile.preview}
                         alt="Preview"
                         style={{
-                          height: '48px',
+                          maxHeight: '60px',
+                          maxWidth: '120px',
                           borderRadius: '6px',
                           objectFit: 'contain',
+                          border: '2px solid #10b981',
                         }}
                       />
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
+                          if (uploadedFile?.preview) {
+                            URL.revokeObjectURL(uploadedFile.preview);
+                          }
                           setUploadedFile(null);
+                          setFileError('');
                         }}
                         disabled={isLoading}
                         style={{
@@ -413,8 +465,8 @@ export default function HeroSection({ onJobStart }) {
                         <X style={{ width: '12px', height: '12px', color: 'white' }} />
                       </button>
                     </div>
-                    <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
-                      {uploadedFile.name}
+                    <span style={{ fontSize: '13px', color: '#10b981', fontWeight: 500 }}>
+                      ✓ {uploadedFile.name}
                     </span>
                   </motion.div>
                 ) : (
@@ -440,6 +492,93 @@ export default function HeroSection({ onJobStart }) {
                 )}
               </AnimatePresence>
             </div>
+            {fileError && (
+              <motion.p
+                initial={{ opacity: 0, y: -5 }}
+                animate={{ opacity: 1, y: 0 }}
+                style={{
+                  fontSize: '13px',
+                  color: '#ef4444',
+                  marginTop: '8px',
+                  marginBottom: 0,
+                }}
+              >
+                {fileError}
+              </motion.p>
+            )}
+          </div>
+
+          {/* Generate Button - Full Width */}
+          <div
+            style={{
+              background: 'var(--card-bg)',
+              border: '1px solid var(--border)',
+              borderRadius: '0 0 16px 16px',
+              padding: '24px',
+              borderTop: 'none',
+            }}
+          >
+            {buttonState.message && (
+              <motion.p
+                initial={{ opacity: 0, y: -5 }}
+                animate={{ opacity: 1, y: 0 }}
+                style={{
+                  fontSize: '13px',
+                  color: '#ef4444',
+                  marginBottom: '12px',
+                  marginTop: 0,
+                  textAlign: 'center',
+                }}
+              >
+                {buttonState.message}
+              </motion.p>
+            )}
+            <motion.button
+              onClick={handleGenerate}
+              disabled={isLoading || buttonState.disabled}
+              className="shimmer-btn"
+              style={{
+                width: '100%',
+                height: '52px',
+                background: buttonState.disabled && !isLoading
+                  ? 'var(--border)'
+                  : 'linear-gradient(135deg, #7c3aed, #06b6d4)',
+                border: 'none',
+                borderRadius: '10px',
+                color: 'white',
+                fontSize: '16px',
+                fontWeight: 600,
+                cursor: isLoading || buttonState.disabled ? 'not-allowed' : 'pointer',
+                opacity: isLoading || buttonState.disabled ? 0.7 : 1,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+              }}
+              whileHover={!isLoading && !buttonState.disabled ? { opacity: 0.9, scale: 1.01 } : {}}
+              whileTap={!isLoading && !buttonState.disabled ? { scale: 0.99 } : {}}
+            >
+              {isLoading ? (
+                <>
+                  <motion.div
+                    style={{
+                      width: '18px',
+                      height: '18px',
+                      border: '2px solid rgba(255,255,255,0.3)',
+                      borderTopColor: 'white',
+                      borderRadius: '50%',
+                    }}
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                  />
+                  Generating...
+                </>
+              ) : hasNeither ? (
+                'Enter a URL or upload a screenshot'
+              ) : (
+                'Generate Tests'
+              )}
+            </motion.button>
           </div>
         </motion.div>
 
@@ -502,9 +641,9 @@ export default function HeroSection({ onJobStart }) {
       </div>
 
       <style>{`
-        @media (max-width: 768px) {
-          .input-grid {
-            grid-template-columns: 1fr !important;
+        @media (max-width: 540px) {
+          .hero-input-card {
+            padding: 16px !important;
           }
         }
       `}</style>
