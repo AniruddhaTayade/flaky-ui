@@ -26,20 +26,22 @@ function AnimatedNumber({ value, duration = 1500 }) {
   return <span>{displayValue}</span>;
 }
 
-export default function ReportCard({ isVisible, onRunAgain, testCount, summary }) {
+export default function ReportCard({ isVisible, onRunAgain, testCount, summary, reportUrl }) {
   const [linkCopied, setLinkCopied] = useState(false);
 
   const total = testCount || 8;
   const passed = testCount ? Math.max(testCount - 1, 1) : 7;
   const failed = testCount ? Math.min(1, testCount - passed) : 1;
   const duration = testCount ? `${(testCount * 0.5 + 1).toFixed(1)}s` : '4.2s';
-  const shareLink = 'https://flaky.dev/reports/abc123';
   const displaySummary = summary || `Generated ${total} tests successfully`;
+  const hasReportUrl = !!reportUrl;
 
   const handleCopyLink = async () => {
-    await navigator.clipboard.writeText(shareLink);
-    setLinkCopied(true);
-    setTimeout(() => setLinkCopied(false), 2000);
+    if (reportUrl) {
+      await navigator.clipboard.writeText(reportUrl);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    }
   };
 
   if (!isVisible) return null;
@@ -138,64 +140,66 @@ export default function ReportCard({ isVisible, onRunAgain, testCount, summary }
         ))}
       </div>
 
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.7 }}
-        style={{
-          marginTop: '24px',
-          display: 'flex',
-          gap: '12px',
-          alignItems: 'center',
-        }}
-        className="share-row"
-      >
-        <input
-          type="text"
-          value={shareLink}
-          readOnly
+      {hasReportUrl && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.7 }}
           style={{
-            flex: 1,
-            background: 'var(--bg-surface)',
-            border: '1px solid var(--border-subtle)',
-            borderRadius: '10px',
-            padding: '12px 16px',
-            color: 'var(--text-muted)',
-            fontSize: '13px',
-            outline: 'none',
-          }}
-        />
-        <motion.button
-          onClick={handleCopyLink}
-          className="shimmer-btn"
-          style={{
-            background: 'linear-gradient(135deg, #7c3aed, #06b6d4)',
-            border: 'none',
-            borderRadius: '10px',
-            padding: '12px 20px',
-            color: 'white',
-            fontWeight: 600,
-            cursor: 'pointer',
+            marginTop: '24px',
             display: 'flex',
+            gap: '12px',
             alignItems: 'center',
-            gap: '8px',
           }}
-          whileHover={{ opacity: 0.9 }}
-          whileTap={{ scale: 0.98 }}
+          className="share-row"
         >
-          {linkCopied ? (
-            <>
-              <Check style={{ width: '16px', height: '16px' }} />
-              Copied!
-            </>
-          ) : (
-            <>
-              <Copy style={{ width: '16px', height: '16px' }} />
-              Copy
-            </>
-          )}
-        </motion.button>
-      </motion.div>
+          <input
+            type="text"
+            value={reportUrl}
+            readOnly
+            style={{
+              flex: 1,
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: '10px',
+              padding: '12px 16px',
+              color: 'var(--text-muted)',
+              fontSize: '13px',
+              outline: 'none',
+            }}
+          />
+          <motion.button
+            onClick={handleCopyLink}
+            className="shimmer-btn"
+            style={{
+              background: 'linear-gradient(135deg, #7c3aed, #06b6d4)',
+              border: 'none',
+              borderRadius: '10px',
+              padding: '12px 20px',
+              color: 'white',
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+            }}
+            whileHover={{ opacity: 0.9 }}
+            whileTap={{ scale: 0.98 }}
+          >
+            {linkCopied ? (
+              <>
+                <Check style={{ width: '16px', height: '16px' }} />
+                Copied!
+              </>
+            ) : (
+              <>
+                <Copy style={{ width: '16px', height: '16px' }} />
+                Copy
+              </>
+            )}
+          </motion.button>
+        </motion.div>
+      )}
 
       <motion.div
         initial={{ opacity: 0 }}
@@ -208,32 +212,56 @@ export default function ReportCard({ isVisible, onRunAgain, testCount, summary }
         }}
         className="action-row"
       >
-        <motion.a
-          href={shareLink}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="shimmer-btn"
-          style={{
-            flex: 1,
-            height: '48px',
-            background: 'linear-gradient(135deg, #7c3aed, #06b6d4)',
-            border: 'none',
-            borderRadius: '10px',
-            color: 'white',
-            fontWeight: 600,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '8px',
-            textDecoration: 'none',
-          }}
-          whileHover={{ opacity: 0.9 }}
-          whileTap={{ scale: 0.98 }}
-        >
-          <ExternalLink style={{ width: '18px', height: '18px' }} />
-          View Full Report
-        </motion.a>
+        {hasReportUrl ? (
+          <motion.a
+            href={reportUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="shimmer-btn"
+            style={{
+              flex: 1,
+              height: '48px',
+              background: 'linear-gradient(135deg, #7c3aed, #06b6d4)',
+              border: 'none',
+              borderRadius: '10px',
+              color: 'white',
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              textDecoration: 'none',
+            }}
+            whileHover={{ opacity: 0.9 }}
+            whileTap={{ scale: 0.98 }}
+          >
+            <ExternalLink style={{ width: '18px', height: '18px' }} />
+            View Full Report
+          </motion.a>
+        ) : (
+          <motion.button
+            disabled
+            style={{
+              flex: 1,
+              height: '48px',
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: '10px',
+              color: 'var(--text-muted)',
+              fontWeight: 600,
+              cursor: 'not-allowed',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              opacity: 0.6,
+            }}
+          >
+            <ExternalLink style={{ width: '18px', height: '18px' }} />
+            Report Unavailable
+          </motion.button>
+        )}
         <motion.button
           onClick={onRunAgain}
           style={{

@@ -27,7 +27,8 @@ function AppContent() {
     testCount: null,
     summary: null,
     error: null,
-    jobId: null
+    jobId: null,
+    reportUrl: null
   });
 
   const stepTimerRef = useRef(null);
@@ -58,7 +59,8 @@ function AppContent() {
         testCount: null,
         summary: null,
         error: null,
-        jobId: Date.now().toString()
+        jobId: Date.now().toString(),
+        reportUrl: null
       });
       toast.info('Starting test generation...', {
         description: url ? `Analyzing ${url}` : `Analyzing uploaded screenshot`
@@ -81,7 +83,8 @@ function AppContent() {
       testCount: null,
       summary: null,
       error: null,
-      jobId: newJobId
+      jobId: newJobId,
+      reportUrl: null
     });
 
     toast.info('Starting test generation...', {
@@ -159,7 +162,8 @@ function AppContent() {
           isComplete: true,
           generatedFiles: result.files,
           testCount: result.test_count,
-          summary: result.summary
+          summary: result.summary,
+          reportUrl: result.report_url
         };
       });
 
@@ -291,6 +295,7 @@ function AppContent() {
                 onRunAgain={handleRunAgain}
                 testCount={jobState.testCount}
                 summary={jobState.summary}
+                reportUrl={jobState.reportUrl}
               />
             </motion.section>
           )}
